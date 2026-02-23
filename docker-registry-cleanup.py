@@ -102,6 +102,10 @@ except KeyError as e:
 	exit_with_error("Missing environment variable: %s" % (e))
 
 # Optional vars
+repo_filter = os.environ.get('REPO_FILTER', None)
+if repo_filter:
+	print("Filtering to repository: %s" % repo_filter)
+
 if "REGISTRY_AUTH" in os.environ:
 	registry_auth = HTTPBasicAuth(os.environ["REGISTRY_AUTH"].split(":")[0], os.environ["REGISTRY_AUTH"].split(":")[1])
 else:
@@ -165,7 +169,9 @@ else:
 for filename in file_list:
 	if filename.endswith("link"):
 		if "_manifests/revisions/sha256" in filename:
-			all_manifests.add(re.sub('.*docker/registry/v2/repositories/.*/_manifests/revisions/sha256/(.*)/link','\\1',filename))
+			repo_in_file = re.sub('.*docker/registry/v2/repositories/(.*)/_manifests/revisions/sha256.*', '\\1', filename)
+			if repo_filter is None or repo_in_file == repo_filter:
+				all_manifests.add(re.sub('.*docker/registry/v2/repositories/.*/_manifests/revisions/sha256/(.*)/link','\\1',filename))
 		elif "_manifests/tags/" in filename and filename.endswith("/current/link"):
 			linked_manifest_files.add(filename)
 
@@ -250,7 +256,9 @@ else:
 		repos = set()
 		for file in file_list:
 			if "_manifests/revisions/sha256/%s" % (manifest) in file and file.endswith("link"):
-				repos.add(re.sub(".*docker/registry/v2/repositories/(.*)/_manifests/revisions/sha256.*", "\\1", file))
+				repo = re.sub(".*docker/registry/v2/repositories/(.*)/_manifests/revisions/sha256.*", "\\1", file)
+				if repo_filter is None or repo == repo_filter:
+					repos.add(repo)
 
 		for repo in repos:
 			if dry_run_mode:
