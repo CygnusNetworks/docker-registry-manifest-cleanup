@@ -146,6 +146,7 @@ blob_dir = registry_dir + "/docker/registry/v2/blobs"
 all_manifests = set()
 linked_manifests = set()
 linked_manifest_files = set()
+tag_map = {}  # sha -> list of (repo, tag)
 file_list = set()
 if storage_on_s3:
 	
@@ -175,8 +176,10 @@ for filename in file_list:
 		elif "_manifests/tags/" in filename and filename.endswith("/current/link"):
 			linked_manifest_files.add(filename)
 
-#fetch linked_manifest_files
+# Resolve tag link files to manifest SHAs
 for filename in linked_manifest_files:
+	repo_in_file = re.sub('.*docker/registry/v2/repositories/(.*)/_manifests/tags/.*', '\\1', filename)
+	tag_in_file = re.sub('.*_manifests/tags/(.*)/current/link', '\\1', filename)
 	error = False
 	if storage_on_s3:
 		k = Key(bucket)
@@ -222,7 +225,36 @@ for filename in linked_manifest_files:
 		else:
 			linked_manifests.add(shasum)
 
+	if repo_filter is None or repo_in_file == repo_filter:
+		tag_map.setdefault(shasum, []).append((repo_in_file, tag_in_file))
+
 unused_manifests = all_manifests - linked_manifests
+
+# ── Helper: perform a DELETE against the registry ────────────────────────────
+
+def registry_delete(repo, reference):
+	url = "%s/v2/%s/manifests/%s" % (registry_url, repo, reference)
+	if token_authentication:
+		r2 = requests.get("%s?service=%s&scope=repository:%s:*" % (token_auth_details["realm"], token_auth_details["service"], repo), auth=registry_auth, verify=cert_verify)
+		return requests.delete(url, verify=cert_verify, headers={"Authorization": "Bearer %s" % r2.json()["token"]})
+	return requests.delete(url, auth=registry_auth, verify=cert_verify)
+
+# ── Display: tagged manifests (always kept) ───────────────────────────────────
+
+if tag_map:
+	print("Tagged manifests (kept):")
+	for sha, entries in sorted(tag_map.items(), key=lambda x: (x[1][0][0], x[1][0][1])):
+		detail = get_manifest_detail(blob_dir, sha)
+		if detail.get("type") == "image":
+			detail_str = "  created=%-19s  %s/%s" % (detail.get("created", "?"), detail.get("os", "?"), detail.get("arch", "?"))
+		elif detail.get("type") == "index":
+			created_part = "  created=%-19s" % detail["created"] if detail.get("created") else ""
+			detail_str = "%s  index [%s]" % (created_part, ", ".join(detail.get("platforms", [])))
+		else:
+			detail_str = ""
+		for repo, tag in entries:
+			print("  [keep] sha256:%-12s  repo=%-30s  tag=%-20s%s" % (sha[:12], repo, tag, detail_str))
+	print()
 
 if len(unused_manifests) == 0:
 	print("No manifests without tags found. Nothing to do.")
@@ -264,14 +296,7 @@ else:
 			if dry_run_mode:
 				print("  DRY_RUN: sha256:%s  repo=%-30s%s" % (manifest[:12], repo, detail_str))
 			else:
-				if token_authentication:
-					r2 = requests.get("%s?service=%s&scope=repository:%s:*" % (token_auth_details["realm"],token_auth_details["service"],repo), auth=registry_auth, verify=cert_verify)
-					auth_token = r2.json()["token"]
-					registry_headers = {"Authorization": "Bearer %s" % (auth_token)}
-					r = requests.delete("%s/v2/%s/manifests/sha256:%s" % (registry_url, repo, manifest), verify=cert_verify, headers=registry_headers)
-				else:
-					r = requests.delete("%s/v2/%s/manifests/sha256:%s" % (registry_url, repo, manifest), auth=registry_auth, verify=cert_verify)
-
+				r = registry_delete(repo, "sha256:%s" % manifest)
 				if r.status_code == 202:
 					print("  Deleted: sha256:%s  repo=%-30s%s" % (manifest[:12], repo, detail_str))
 					cleaned_count += 1
