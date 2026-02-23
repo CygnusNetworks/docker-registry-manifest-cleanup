@@ -14,6 +14,58 @@ def exit_with_error(message):
 	print("Exiting")
 	exit(1)
 
+def get_manifest_detail(blob_dir, manifest_sha):
+	"""Return image metadata dict from the manifest config blob, best-effort."""
+	try:
+		data_path = "%s/sha256/%s/%s/data" % (blob_dir, manifest_sha[0:2], manifest_sha)
+		manifest = json.loads(open(data_path).read())
+		media_type = manifest.get("mediaType", "")
+
+		# Manifest list or OCI image index
+		if (media_type in (
+				"application/vnd.docker.distribution.manifest.list.v2+json",
+				"application/vnd.oci.image.index.v1+json",
+			) or (not media_type and "manifests" in manifest)):
+			platforms = [
+				"%s/%s" % (
+					m.get("platform", {}).get("os", "?"),
+					m.get("platform", {}).get("architecture", "?"),
+				)
+				for m in manifest.get("manifests", [])
+			]
+			# Get created from a child manifest (prefer linux/amd64)
+			created = ""
+			children_sorted = sorted(manifest.get("manifests", []), key=lambda m: (
+				0 if (m.get("platform", {}).get("os") == "linux" and m.get("platform", {}).get("architecture") == "amd64") else
+				1 if m.get("platform", {}).get("os") == "linux" else 2
+			))
+			for child in children_sorted:
+				child_sha = child.get("digest", "").split(":")[-1]
+				if child_sha:
+					child_detail = get_manifest_detail(blob_dir, child_sha)
+					if child_detail.get("created"):
+						created = child_detail["created"]
+						break
+			return {"type": "index", "platforms": platforms, "created": created}
+
+		config_digest = manifest.get("config", {}).get("digest", "")
+		if not config_digest:
+			return {}
+
+		config_sha = config_digest.split(":")[1]
+		config_path = "%s/sha256/%s/%s/data" % (blob_dir, config_sha[0:2], config_sha)
+		config = json.loads(open(config_path).read())
+
+		created = config.get("created", "")[:19].replace("T", " ")
+		return {
+			"type": "image",
+			"created": created,
+			"os": config.get("os", ""),
+			"arch": config.get("architecture", ""),
+		}
+	except Exception:
+		return {}
+
 # Initial setup
 try:
 	if "DRY_RUN" in os.environ and os.environ['DRY_RUN'] == "true":
@@ -185,6 +237,15 @@ else:
 			status_msg += " ..not really, due to dry-run mode"
 		print(status_msg)
 
+		detail = get_manifest_detail(blob_dir, manifest)
+		if detail.get("type") == "image":
+			detail_str = "  created=%-19s  %s/%s" % (detail.get("created", "?"), detail.get("os", "?"), detail.get("arch", "?"))
+		elif detail.get("type") == "index":
+			created_part = "  created=%-19s" % detail["created"] if detail.get("created") else ""
+			detail_str = "%s  index [%s]" % (created_part, ", ".join(detail.get("platforms", [])))
+		else:
+			detail_str = ""
+
 		#get repos
 		repos = set()
 		for file in file_list:
@@ -193,7 +254,7 @@ else:
 
 		for repo in repos:
 			if dry_run_mode:
-				print("DRY_RUN: Would have run an HTTP DELETE request to %s/v2/%s/manifests/sha256:%s" % (registry_url, repo, manifest))
+				print("  DRY_RUN: sha256:%s  repo=%-30s%s" % (manifest[:12], repo, detail_str))
 			else:
 				if token_authentication:
 					r2 = requests.get("%s?service=%s&scope=repository:%s:*" % (token_auth_details["realm"],token_auth_details["service"],repo), auth=registry_auth, verify=cert_verify)
@@ -204,6 +265,7 @@ else:
 					r = requests.delete("%s/v2/%s/manifests/sha256:%s" % (registry_url, repo, manifest), auth=registry_auth, verify=cert_verify)
 
 				if r.status_code == 202:
+					print("  Deleted: sha256:%s  repo=%-30s%s" % (manifest[:12], repo, detail_str))
 					cleaned_count += 1
 				else:
 					failed_count += 1
