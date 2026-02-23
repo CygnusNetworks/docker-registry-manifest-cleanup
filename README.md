@@ -39,22 +39,22 @@ After running this, you should do a garbage collect in the registry to free up t
 #### Examples of running against local storage:
 Simplest way:
 ```
-docker run -it -v /home/someuser/registry:/registry -e REGISTRY_URL=http://192.168.77.88:5000 mortensrasmussen/docker-registry-manifest-cleanup
+docker run -it -v /home/someuser/registry:/registry -e REGISTRY_URL=http://192.168.77.88:5000 cygnusnetworks/docker-registry-manifest-cleanup
 ```
 
 To test it without changing anything in your registry:
 ```
-docker run -it -v /home/someuser/registry:/registry -e REGISTRY_URL=http://192.168.77.88:5000 -e DRY_RUN="true" mortensrasmussen/docker-registry-manifest-cleanup
+docker run -it -v /home/someuser/registry:/registry -e REGISTRY_URL=http://192.168.77.88:5000 -e DRY_RUN="true" cygnusnetworks/docker-registry-manifest-cleanup
 ```
 
 With more options:
 ```
-docker run -it -v /home/someuser/registry:/registry -e REGISTRY_URL=http://192.168.77.88:5000 -e SELF_SIGNED_CERT="true" -e REGISTRY_AUTH="myuser:sickpassword" mortensrasmussen/docker-registry-manifest-cleanup
+docker run -it -v /home/someuser/registry:/registry -e REGISTRY_URL=http://192.168.77.88:5000 -e SELF_SIGNED_CERT="true" -e REGISTRY_AUTH="myuser:sickpassword" cygnusnetworks/docker-registry-manifest-cleanup
 ```
 
 Restrict to a single repository:
 ```
-docker run -it -v /home/someuser/registry:/registry -e REGISTRY_URL=http://192.168.77.88:5000 -e REGISTRY_AUTH="myuser:sickpassword" -e REPO_FILTER="myapp" -e DRY_RUN="true" mortensrasmussen/docker-registry-manifest-cleanup
+docker run -it -v /home/someuser/registry:/registry -e REGISTRY_URL=http://192.168.77.88:5000 -e REGISTRY_AUTH="myuser:sickpassword" -e REPO_FILTER="myapp" -e DRY_RUN="true" cygnusnetworks/docker-registry-manifest-cleanup
 ```
 
 ### Commit-hash tag cleanup
@@ -69,7 +69,7 @@ docker run -it -v /home/someuser/registry:/registry \
   -e REGISTRY_AUTH="myuser:sickpassword" \
   -e HASH_TAG_KEEP=5 \
   -e DRY_RUN="true" \
-  mortensrasmussen/docker-registry-manifest-cleanup
+  cygnusnetworks/docker-registry-manifest-cleanup
 ```
 
 ### Output format
@@ -113,17 +113,17 @@ DRY_RUN | No | Set this to do a dry-run (e.g. don't delete anything, just show w
 #### Examples of running against S3 storage
 Simplest way:
 ```
-docker run -it -e REGISTRY_URL=http://192.168.77.88:5000 -e REGISTRY_STORAGE="S3" -e ACCESS_KEY="XXXXXXGZMXXXXQMAGXXX" -e SECRET_KEY="zfXXXXXEbq/JX++XXXAa/Z+ZCXXXXypfOXXXXC/X" -e BUCKET="registry-bucket-1" -e REGION="eu-central-1" mortensrasmussen/docker-registry-manifest-cleanup
+docker run -it -e REGISTRY_URL=http://192.168.77.88:5000 -e REGISTRY_STORAGE="S3" -e ACCESS_KEY="XXXXXXGZMXXXXQMAGXXX" -e SECRET_KEY="zfXXXXXEbq/JX++XXXAa/Z+ZCXXXXypfOXXXXC/X" -e BUCKET="registry-bucket-1" -e REGION="eu-central-1" cygnusnetworks/docker-registry-manifest-cleanup
 ```
 
 To test it without changing anything in your registry:
 ```
-docker run -it -e DRY_RUN="true" -e REGISTRY_URL=http://192.168.77.88:5000 -e REGISTRY_STORAGE="S3" -e ACCESS_KEY="XXXXXXGZMXXXXQMAGXXX" -e SECRET_KEY="zfXXXXXEbq/JX++XXXAa/Z+ZCXXXXypfOXXXXC/X" -e BUCKET="registry-bucket-1" -e REGION="eu-central-1" mortensrasmussen/docker-registry-manifest-cleanup
+docker run -it -e DRY_RUN="true" -e REGISTRY_URL=http://192.168.77.88:5000 -e REGISTRY_STORAGE="S3" -e ACCESS_KEY="XXXXXXGZMXXXXQMAGXXX" -e SECRET_KEY="zfXXXXXEbq/JX++XXXAa/Z+ZCXXXXypfOXXXXC/X" -e BUCKET="registry-bucket-1" -e REGION="eu-central-1" cygnusnetworks/docker-registry-manifest-cleanup
 ```
 
 With more options:
 ```
-docker run -it -e REGISTRY_URL=http://192.168.77.88:5000 -e REGISTRY_STORAGE="S3" -e ACCESS_KEY="XXXXXXGZMXXXXQMAGXXX" -e SECRET_KEY="zfXXXXXEbq/JX++XXXAa/Z+ZCXXXXypfOXXXXC/X" -e BUCKET="registry-bucket-1" -e REGION="eu-central-1" -e SELF_SIGNED_CERT="true" -e REGISTRY_AUTH="myuser:sickpassword" mortensrasmussen/docker-registry-manifest-cleanup
+docker run -it -e REGISTRY_URL=http://192.168.77.88:5000 -e REGISTRY_STORAGE="S3" -e ACCESS_KEY="XXXXXXGZMXXXXQMAGXXX" -e SECRET_KEY="zfXXXXXEbq/JX++XXXAa/Z+ZCXXXXypfOXXXXC/X" -e BUCKET="registry-bucket-1" -e REGION="eu-central-1" -e SELF_SIGNED_CERT="true" -e REGISTRY_AUTH="myuser:sickpassword" cygnusnetworks/docker-registry-manifest-cleanup
 ```
 
 ### Running against Harbor and other baerer token-based authentication forms
