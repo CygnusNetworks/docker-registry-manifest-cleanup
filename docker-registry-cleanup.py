@@ -239,12 +239,49 @@ def registry_delete(repo, reference):
 		return requests.delete(url, verify=cert_verify, headers={"Authorization": "Bearer %s" % r2.json()["token"]})
 	return requests.delete(url, auth=registry_auth, verify=cert_verify)
 
-# ── Display: tagged manifests (always kept) ───────────────────────────────────
+# ── Hash-tag cleanup ──────────────────────────────────────────────────────────
+# Identify commit-hash tags (e.g. 3f33a785) and keep only the N most recent per repo.
 
-if tag_map:
-	print("Tagged manifests (kept):")
-	for sha, entries in sorted(tag_map.items(), key=lambda x: (x[1][0][0], x[1][0][1])):
-		detail = get_manifest_detail(blob_dir, sha)
+hash_pattern = re.compile(os.environ.get('HASH_TAG_PATTERN', r'^[0-9a-f]{7,12}$'))
+hash_keep = int(os.environ.get('HASH_TAG_KEEP', '10'))
+
+hash_by_repo = {}
+for sha, entries in tag_map.items():
+	for repo, tag in entries:
+		if hash_pattern.match(tag):
+			detail = get_manifest_detail(blob_dir, sha)
+			created = detail.get("created", "")
+			hash_by_repo.setdefault(repo, []).append((sha, tag, created, detail))
+
+hash_to_keep = []
+hash_to_delete = []  # deduplicated by (sha, repo)
+
+for repo in sorted(hash_by_repo.keys()):
+	entries = hash_by_repo[repo]
+	entries.sort(key=lambda x: x[2] or "0000", reverse=True)
+	seen_sha = set()
+	for i, (sha, tag, created, detail) in enumerate(entries):
+		if i < hash_keep:
+			hash_to_keep.append((sha, repo, tag, created, detail))
+		else:
+			all_tags_here = [t for r, t in tag_map.get(sha, []) if r == repo]
+			if any(not hash_pattern.match(t) for t in all_tags_here):
+				hash_to_keep.append((sha, repo, tag, created, detail))
+				continue
+			if sha not in seen_sha:
+				seen_sha.add(sha)
+				hash_to_delete.append((sha, repo, created, detail))
+
+# ── Display: version-tagged manifests (always kept) ──────────────────────────
+
+non_hash_entries = [(sha, repo, tag, get_manifest_detail(blob_dir, sha))
+	for sha, entries in tag_map.items()
+	for repo, tag in entries
+	if not hash_pattern.match(tag)]
+
+if non_hash_entries:
+	print("Version-tagged manifests (always kept):")
+	for sha, repo, tag, detail in sorted(non_hash_entries, key=lambda x: (x[1], x[2])):
 		if detail.get("type") == "image":
 			detail_str = "  created=%-19s  %s/%s" % (detail.get("created", "?"), detail.get("os", "?"), detail.get("arch", "?"))
 		elif detail.get("type") == "index":
@@ -252,8 +289,48 @@ if tag_map:
 			detail_str = "%s  index [%s]" % (created_part, ", ".join(detail.get("platforms", [])))
 		else:
 			detail_str = ""
-		for repo, tag in entries:
-			print("  [keep] sha256:%-12s  repo=%-30s  tag=%-20s%s" % (sha[:12], repo, tag, detail_str))
+		print("  [keep] sha256:%-12s  repo=%-30s  tag=%-20s%s" % (sha[:12], repo, tag, detail_str))
+	print()
+
+# ── Display: hash-tagged manifests to keep ───────────────────────────────────
+
+if hash_to_keep:
+	print("Hash-tagged manifests (keeping %d most recent per repo):" % hash_keep)
+	for sha, repo, tag, created, detail in sorted(hash_to_keep, key=lambda x: (x[1], x[3])):
+		if detail.get("type") == "image":
+			detail_str = "  created=%-19s  %s/%s" % (detail.get("created", "?"), detail.get("os", "?"), detail.get("arch", "?"))
+		elif detail.get("type") == "index":
+			created_part = "  created=%-19s" % detail["created"] if detail.get("created") else ""
+			detail_str = "%s  index [%s]" % (created_part, ", ".join(detail.get("platforms", [])))
+		else:
+			detail_str = ""
+		print("  [keep] sha256:%-12s  repo=%-30s  tag=%-20s%s" % (sha[:12], repo, tag, detail_str))
+	print()
+
+# ── Delete: old hash-tagged manifests ────────────────────────────────────────
+
+if hash_to_delete:
+	print("Hash-tagged manifests to delete (beyond %d most recent per repo):" % hash_keep)
+	hash_cleaned = 0
+	for sha, repo, created, detail in sorted(hash_to_delete, key=lambda x: (x[1], x[2])):
+		if detail.get("type") == "image":
+			detail_str = "  created=%-19s  %s/%s" % (detail.get("created", "?"), detail.get("os", "?"), detail.get("arch", "?"))
+		elif detail.get("type") == "index":
+			created_part = "  created=%-19s" % detail["created"] if detail.get("created") else ""
+			detail_str = "%s  index [%s]" % (created_part, ", ".join(detail.get("platforms", [])))
+		else:
+			detail_str = ""
+		if dry_run_mode:
+			print("  DRY_RUN: sha256:%-12s  repo=%-30s%s" % (sha[:12], repo, detail_str))
+		else:
+			r = registry_delete(repo, "sha256:%s" % sha)
+			if r.status_code == 202:
+				print("  Deleted: sha256:%-12s  repo=%-30s%s" % (sha[:12], repo, detail_str))
+				hash_cleaned += 1
+			else:
+				print("  Failed:  sha256:%-12s  repo=%-30s  status=%s" % (sha[:12], repo, r.status_code))
+	if not dry_run_mode:
+		print("Hash-tagged: deleted %d of %d" % (hash_cleaned, len(hash_to_delete)))
 	print()
 
 if len(unused_manifests) == 0:
