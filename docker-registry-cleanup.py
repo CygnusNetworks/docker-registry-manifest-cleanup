@@ -102,7 +102,7 @@ except KeyError as e:
 	exit_with_error("Missing environment variable: %s" % (e))
 
 # Optional vars
-repo_filter = os.environ.get('REPO_FILTER', None)
+repo_filter = os.environ.get('REPO_FILTER') or None
 if repo_filter:
 	print("Filtering to repository: %s" % repo_filter)
 
