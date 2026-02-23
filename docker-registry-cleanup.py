@@ -5,8 +5,6 @@ import requests
 import json
 import re
 import os
-import boto
-from boto.s3.key import Key
 
 ############################
 ######## Functions #########
@@ -27,6 +25,11 @@ try:
 	if "REGISTRY_STORAGE" in os.environ and os.environ['REGISTRY_STORAGE'] == "S3":
 		print("Running against S3 storage")
 		storage_on_s3 = True
+		try:
+			import boto
+			from boto.s3.key import Key
+		except ImportError:
+			exit_with_error("boto is required for S3 storage. Install it with: pip install boto")
 		s3_access_key = os.environ['ACCESS_KEY']
 		s3_secret_key = os.environ['SECRET_KEY']
 		s3_bucket = os.environ['BUCKET']
