@@ -25,13 +25,16 @@ See the *examples* below if needed. Deletion needs to be enabled in your registr
 
 After running this, you should do a garbage collect in the registry to free up the disk space.
 
-| Variable name | Required | Description | Example | 
+| Variable name | Required | Description | Example |
 | --- | --- | --- | --- |
-REGISTRY_URL | Yes | The URL to the registry | `http://example.com:5000/` | 
-REGISTRY_DIR | No | The path to the registry dir - not needed if using the docker container and mounting in the dir in /registry (see examples) | `/registry` |
-SELF_SIGNED_CERT | No | Set this if using a self-signed cert | `true` |
-REGISTRY_AUTH | No | Set this when using http basic auth | `username:password` |
-DRY_RUN | No | Set this to do a dry-run (e.g. don't delete anything, just show what would be done) | `true` |
+| REGISTRY_URL | Yes | The URL to the registry | `http://example.com:5000/` |
+| REGISTRY_DIR | No | The path to the registry dir - not needed if using the docker container and mounting in the dir in /registry (see examples) | `/registry` |
+| SELF_SIGNED_CERT | No | Set this if using a self-signed cert | `true` |
+| REGISTRY_AUTH | No | Set this when using http basic auth | `username:password` |
+| DRY_RUN | No | Set this to do a dry-run (e.g. don't delete anything, just show what would be done) | `true` |
+| REPO_FILTER | No | Restrict cleanup to a single named repository | `myapp` |
+| HASH_TAG_PATTERN | No | Regex to identify commit-hash tags for age-based cleanup (default: `^[0-9a-f]{7,12}$`) | `^[0-9a-f]{8}$` |
+| HASH_TAG_KEEP | No | Number of most recent hash-tagged images to keep per repository (default: `10`) | `5` |
 
 #### Examples of running against local storage:
 Simplest way:
@@ -47,6 +50,46 @@ docker run -it -v /home/someuser/registry:/registry -e REGISTRY_URL=http://192.1
 With more options:
 ```
 docker run -it -v /home/someuser/registry:/registry -e REGISTRY_URL=http://192.168.77.88:5000 -e SELF_SIGNED_CERT="true" -e REGISTRY_AUTH="myuser:sickpassword" mortensrasmussen/docker-registry-manifest-cleanup
+```
+
+Restrict to a single repository:
+```
+docker run -it -v /home/someuser/registry:/registry -e REGISTRY_URL=http://192.168.77.88:5000 -e REGISTRY_AUTH="myuser:sickpassword" -e REPO_FILTER="myapp" -e DRY_RUN="true" mortensrasmussen/docker-registry-manifest-cleanup
+```
+
+### Commit-hash tag cleanup
+
+CI/CD pipelines often tag images with short git commit hashes (e.g. `myapp:3f33a785`). These accumulate over time and consume significant disk space. The script can automatically delete old hash-tagged images while keeping the N most recent ones per repository.
+
+Tags matching `HASH_TAG_PATTERN` are sorted by image creation date. The `HASH_TAG_KEEP` most recent are kept; the rest are deleted. A manifest is never deleted if it also carries a non-hash tag (e.g. `latest`, `3.16`).
+
+```
+docker run -it -v /home/someuser/registry:/registry \
+  -e REGISTRY_URL=http://192.168.77.88:5000 \
+  -e REGISTRY_AUTH="myuser:sickpassword" \
+  -e HASH_TAG_KEEP=5 \
+  -e DRY_RUN="true" \
+  mortensrasmussen/docker-registry-manifest-cleanup
+```
+
+### Output format
+
+Before performing any deletions the script prints a summary of what is in the registry:
+
+```
+Version-tagged manifests (always kept):
+  [keep] sha256:f7da6fb39403  repo=myapp   tag=3.16    created=2026-02-17 10:23:39  index [linux/amd64, linux/arm64]
+  [keep] sha256:f7da6fb39403  repo=myapp   tag=latest  created=2026-02-17 10:23:39  index [linux/amd64, linux/arm64]
+
+Hash-tagged manifests (keeping 10 most recent per repo):
+  [keep] sha256:cf4b05e83109  repo=myapp   tag=3f33a785  created=2025-12-01 08:15:44  linux/amd64
+
+Hash-tagged manifests to delete (beyond 10 most recent per repo):
+  DRY_RUN: sha256:2e8f2a8622a3  repo=myapp   created=2023-04-03 11:24:28  linux/amd64
+
+Untagged manifests to delete (94 in registry):
+  Cleaning 1 of 94 ..not really, due to dry-run mode
+  DRY_RUN: sha256:5fa55b3f875e  repo=myapp   created=2023-09-12 10:05:33  linux/amd64
 ```
 
 ### Running against S3 storage
