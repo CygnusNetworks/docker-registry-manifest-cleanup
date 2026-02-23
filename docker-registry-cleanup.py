@@ -143,12 +143,21 @@ for filename in linked_manifest_files:
 	if error:
 		linked_manifests.add(shasum)
 	else:
-		manifest_media_type = manifest["mediaType"]
+		manifest_media_type = manifest.get("mediaType", "")
 
-		if manifest_media_type == "application/vnd.docker.distribution.manifest.list.v2+json":
-			#add all manifests from manifest list
+		is_manifest_list = (
+			manifest_media_type in (
+				"application/vnd.docker.distribution.manifest.list.v2+json",
+				"application/vnd.oci.image.index.v1+json",
+			)
+			or (not manifest_media_type and "manifests" in manifest)
+		)
+
+		if is_manifest_list:
+			# Mark the index itself as linked, then also mark all child manifests
+			linked_manifests.add(shasum)
 			for mf in manifest["manifests"]:
-				linked_manifests.add(mf["digest"])
+				linked_manifests.add(mf["digest"].split(":")[1])
 		else:
 			linked_manifests.add(shasum)
 
